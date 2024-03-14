@@ -1,0 +1,400 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.fProNum..Create
+Gui.fProNum..Caption("Pro Number DashBoard")
+Gui.fProNum..Size(14745,8280)
+Gui.fProNum..MinX(14745)
+Gui.fProNum..MinY(8280)
+Gui.fProNum..Position(0,0)
+Gui.fProNum..BackColor(-2147483633)
+Gui.fProNum..MousePointer(0)
+Gui.fProNum..Event(UnLoad,fProNum_UnLoad)
+Gui.fProNum.GsGridProNum.Create(GsGridControl)
+Gui.fProNum.GsGridProNum.Size(14310,7035)
+Gui.fProNum.GsGridProNum.Position(120,570)
+Gui.fProNum.GsGridProNum.Anchor(15)
+Gui.fProNum.GsGridProNum.Event(CellValueChanged,GsGridProNum_CellValueChanged)
+Gui.fProNum.cmd1UpdatePro.Create(Button)
+Gui.fProNum.cmd1UpdatePro.Size(3060,375)
+Gui.fProNum.cmd1UpdatePro.Position(5535,120)
+Gui.fProNum.cmd1UpdatePro.Caption("Update Pro Number")
+Gui.fProNum.cmd1UpdatePro.Event(Click,cmd1UpdatePro_Click)
+Gui.fProNum.txtProNum.Create(TextBox,"",True,3195,300,0,2085,150,True,0,"Arial",8,-2147483643,1)
+Gui.fProNum.txtProNum.MaxLength(20)
+Gui.fProNum.lbl1.Create(Label,"Enter Pro Number",True,1935,255,0,120,240,True,0,"Arial",8,-2147483633,0)
+Gui.fProNum.cmd1Refresh.Create(Button)
+Gui.fProNum.cmd1Refresh.Size(855,375)
+Gui.fProNum.cmd1Refresh.Position(8925,120)
+Gui.fProNum.cmd1Refresh.Caption("Refresh")
+Gui.fProNum.cmd1Refresh.Event(Click,cmd1Refresh_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.bLoadData.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Author: GaryB
+'Date:   02/25/19
+'Customer: House of Doolittle - Ann Suplee
+'Add custom menu item so user can update her Pro-Num to any open shipment they select
+'we are also letting them update the "tracking_no" to the bol_header table.pro_no value
+'since this is how they keep track of the individual lines that are shipped
+'GCG_5438_ProNumDash.g2u 
+
+
+f.Intrinsic.Control.Label("Timeout_Reset_Load_Dts")
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+
+v.Local.sSQL.Declare
+v.Local.iCount.Declare
+v.Local.iHours.Declare
+v.Local.fSumHours.Declare
+V.Local.sTemp.Declare
+v.Local.iTimeOut.Declare(Long,100)
+
+'open DB connection
+   f.ODBC.Connection!Con.OpenCompanyConnection(v.Local.iTimeout)
+   f.Intrinsic.Control.CallSub("InitializeGrid")
+   'get the previous grid control settings
+   f.Intrinsic.Control.CallSub(Deserialize) 
+' f.Data.DataTable.CreateFromSQL("dtOpenShip","con","SELECT Convert(0,SQL_BIT) as SelectShip, A.CUSTOMER,A.Pro_No,A.TRACKING_NO,C.TRACKING_NO as TRACKING_BOL, A.PCK_NO,A.WAY_BILL,A.ORDER_NO,A.ORDER_SUFFIX,A.ORDER_REC,A.DATE_SHIPPED,A.CUSTOMER_PO,A.CARRIER_CD,B.PLLT_NO,C.CRTN_NO FROM V_SHIPMENT_Header A left join V_BOL_PALLET_NUM B on A.PCK_NO = B.PCK_NO LEFT JOIN V_BOL_CARTON_NUM C ON A.WAY_BILL = C.WAYBILL_NO",True) 
+' f.Data.DataTable.AddColumn("dtOpenShip","CustName","String")
+' f.Data.Dictionary.CreateFromSQL("ddCustName","con","Select CUSTOMER,NAME_CUSTOMER AS CUSTNAME from V_Customer_Master where REC = 1")
+' F.Data.Dictionary.SetDefaultReturn("ddCustName","")
+' f.Data.DataTable.FillFromDictionary("dtOpenShip","ddCustName","Customer","CUSTNAME")
+' F.Data.Dictionary.Close("ddCustName")
+' 
+''create a view of the rows
+' f.Data.DataView.Create("dtOpenShip","dvOpenShip",22)
+''create the grid
+' f.Intrinsic.Control.CallSub(CreateGrid)
+' 
+''get the previous grid control settings
+'   f.Intrinsic.Control.CallSub(Deserialize) 
+
+''set this to the mainview
+'   gui.fProNum.GsGridProNum.MainView("gvProNum") 
+'show the screen
+
+   gui.fProNum..Show
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,=,21025)
+        F.ODBC.Connection!con.Close
+        'Error is a timeout issue, increase timeout and try again
+        F.Intrinsic.Math.Add(V.Local.iTimeout,100,V.Local.iTimeout)
+        'Close out of DTs if they exist
+        F.Intrinsic.Control.If(V.DataTable.dtOpenShip.Exists)
+            F.Data.DataTable.Close("dtOpenShip")
+        F.Intrinsic.Control.EndIf
+        'Go to beginning of subroutine
+        F.Intrinsic.Control.GoTo("Timeout_Reset_Load_DTs")
+    F.Intrinsic.Control.EndIf
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fProNum_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Serialize.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare	
+	V.Local.sSerialize.Declare
+	v.Local.sSql.Declare
+	v.Local.sUserID.Declare
+	
+	f.Global.Security.GetUserId(v.Caller.User,v.Caller.CompanyCode,v.Local.sUserID)
+'delete old registry records	
+	F.ODBC.Connection!common.OpenConnection(V.Ambient.Ccon,V.Ambient.Cuser,V.Ambient.Cpass)		
+	f.Intrinsic.String.Build("Delete From Gs_Registry Where User_ID = '{0}' and Company = '{1}' and Reg_ID = 5438 and Seq = '1001';",v.Local.sUserID,v.Caller.CompanyCode,v.Local.sSQL)
+	F.ODBC.Connection!common.Execute(v.Local.sSQL)
+	F.ODBC.Connection!common.Close		
+	
+'save grid settings to registry	
+	gui.fProNum.GsGridProNum.Serialize("gvProNum",v.Local.sSerialize)
+	F.Global.Registry.AddValue(V.Caller.User,V.Caller.CompanyCode,"gvProNum",5438,1001,False,"Serialize",False,0,-999.0,1/1/1980,12:00:00 AM,V.Local.sSerialize)
+	
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub("Unload")	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Serialize.End
+
+Program.Sub.Deserialize.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare	
+	V.Local.sSerialize.Declare
+	
+'read grid settings from registry
+	F.Global.Registry.ReadValue(V.Caller.User,V.Caller.CompanyCode,"gvProNum",5438,1001,6,"",V.Local.sSerialize)
+	F.Intrinsic.Control.If(V.Local.sSerialize,<>,"")
+		gui.fProNum.GsGridProNum.Deserialize(V.Local.sSerialize)
+	f.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub("Unload")
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Deserialize.End
+
+Program.Sub.fProNum_UnLoad.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+
+'save the settings from the gridcontrol to registry
+f.Intrinsic.Control.CallSub(Serialize)
+f.Intrinsic.Control.CallSub("UnLoad")
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)   
+F.Intrinsic.Control.EndTry
+
+Program.Sub.fProNum_UnLoad.End
+
+Program.Sub.CreateGrid.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+'create gridview
+gui.fProNum.GsGridProNum.AddGridviewFromDataview("gvProNum","dtOpenShip","dvOpenShip")
+'change column names
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","Customer","Caption","Customer")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CustName","Caption","Customer Name")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","SelectShip","Caption","Select Shipment")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PRO_NO","Caption","Pro Num")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_NO","Caption","Tracking Num")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_BOL","Caption","Tracking BOL")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PCK_NO","Caption","PCK Num")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","WAY_BILL","Caption","Way Bill Num")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_NO","Caption","Order No")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_SUFFIX","Caption","Order Suffix")
+'gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_REC","Caption","Order Rec")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","DATE_SHIPPED","Caption","Date Shipped")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CUSTOMER_PO","Caption","Customer PO")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CARRIER_CD","Caption","Carrier Code")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CRTN_NO","Caption","Cartons")
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PLLT_NO","Caption","Pallets")
+
+'bold column headings
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","SelectShip","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","Customer","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CustName","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PRO_NO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_NO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_BOL","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PCK_NO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","WAY_BILL","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_NO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_SUFFIX","HeaderFontBold",True)
+'gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_REC","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","DATE_SHIPPED","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CUSTOMER_PO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CARRIER_CD","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CRTN_NO","HeaderFontBold",True)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PLLT_NO","HeaderFontBold",True)
+
+'set minwidth
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","SelectShip","MinWidth",80)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","Customer","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CustName","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PRO_NO","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_NO","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_BOL","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PCK_NO","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","WAY_BILL","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_NO","MinWidth",100)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_SUFFIX","MinWidth",100)
+'gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_REC","MinWidth",100)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","DATE_SHIPPED","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CUSTOMER_PO","MinWidth",120)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CARRIER_CD","MinWidth",100)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","CRTN_NO","MinWidth",100)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","PLLT_NO","MinWidth",100)
+
+'set column to not be visible
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","ORDER_REC","VISIBLE",False)
+
+'let columns be editable
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","SelectShip","Readonly",False)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_NO","Readonly",False)
+gui.fProNum.GsGridProNum.SetColumnProperty("gvPronum","TRACKING_BOL","Readonly",False)
+
+'get the previous grid control settings
+'f.Intrinsic.Control.CallSub(Deserialize)
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fproNum_Unload)
+F.Intrinsic.Control.EndTry
+
+Program.Sub.CreateGrid.End
+
+Program.Sub.cmd1UpdatePro_Click.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	v.Local.sProNum.Declare
+	v.Local.iRow.Declare
+	v.Local.ssql.Declare
+	V.Local.sOrderNo.Declare
+	v.Local.sFilter.Declare	
+	
+	v.Local.sProNum.Set(v.Screen.fProNum!txtProNum.Text)   
+   f.Intrinsic.Control.If(v.Local.sProNum,<>, "")  
+      
+'loop thru grid and for the selected rows update the Pro Number entered - PRO number is also the tracking_no per Ann - pro-num also goes to the bol_header screen as pro_no
+      f.Intrinsic.Control.For(v.Local.iRow,0,v.DataView.dtOpenShip!dvOpenShip.RowCount--,1)   
+         f.Intrinsic.Control.If(v.Dataview.dtOpenShip!dvOpenShip(v.Local.iRow).SelectShip!FieldVal,=,True)
+            f.Data.DataView.SetValue("dtOpenShip","dvOpenShip",v.Local.iRow,"SelectShip",False)
+            f.Intrinsic.String.Build("UPDATE SHIPMENT_HEADER SET PRO_NO = '{0}',TRACKING_NO = '{0}' WHERE WAY_BILL = '{1}' ",v.Local.sProNum.Trim,v.DataView.dtOpenShip!dvOpenShip(v.Local.iRow).WAY_BILL!fieldval,v.Local.sSql)    
+'update shipment header table           
+            f.ODBC.Connection!Con.Execute(V.Local.sSQL)  
+'update bol_header table
+            f.Intrinsic.String.Build("UPDATE BOL_HEADER SET PRO_NO = '{0}' WHERE WAYBILL_NO = '{1}' ",v.Local.sProNum.Trim,v.DataView.dtOpenShip!dvOpenShip(v.Local.iRow).WAY_BILL!fieldval,v.Local.sSql) 
+            f.ODBC.Connection!Con.Execute(V.Local.sSQL)  
+'want to update all of the same order with the pro_no - pro_no is also the tracking_no 
+            f.Data.DataView.SetValue("dtOpenShip","dvOpenShip",v.Local.iRow,"PRO_NO",V.Local.sProNum,"TRACKING_NO",V.Local.sProNum)           
+         f.Intrinsic.Control.EndIf
+      f.Intrinsic.Control.Next(v.Local.iRow)
+   f.Intrinsic.Control.Else
+      f.Intrinsic.UI.Msgbox("Pro Number field is blank, please enter value")
+   f.Intrinsic.Control.EndIf 
+   gui.fProNum.txtProNum.Text("")
+'set this to the mainview to refresh display
+gui.fProNum.GsGridProNum.MainView("gvProNum")
+
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fproNum_Unload)
+F.Intrinsic.Control.EndTry
+
+Program.Sub.cmd1UpdatePro_Click.End
+
+Program.Sub.GsGridProNum_CellValueChanged.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	v.Local.sTrackNO.Declare
+	v.Local.sWayBillNo.Declare
+	V.Local.sCartonNum.Declare
+	v.Local.sSql.Declare
+	
+'the naming of these fields gets confusing, we are updating the "tracking no" on the dashboard, but this value is stored as the PRO_NO on the 
+'bol_header table, also we are matching the shipment_header.way_bill to the bol_header.waybill_no to determine which line gets the updated tracking number
+	F.Intrinsic.Control.If(V.Args.Column,=,"TRACKING_NO")   
+	   V.Local.sTrackNO.Set(v.DataView.dtOpenShip!dvOpenShip(v.Args.Rowindex).TRACKING_NO!Fieldval)
+	   V.Local.sWayBillNo.Set(V.DataView.dtOpenShip!dvOpenShip(v.Args.Rowindex).WAY_BILL!Fieldval)
+       f.Intrinsic.String.Build("UPDATE SHIPMENT_HEADER SET TRACKING_NO = '{0}' WHERE WAY_BILL = '{1}'",v.Local.sTrackNO,V.Local.sWayBillNo,v.Local.sSql)      
+'update BOL header table           
+       f.ODBC.Connection!Con.Execute(V.Local.sSQL)   
+    F.Intrinsic.Control.EndIf   
+    F.Intrinsic.Control.If(V.Args.Column,=,"TRACKING_BOL")   
+	   V.Local.sTrackNO.Set(v.DataView.dtOpenShip!dvOpenShip(v.Args.Rowindex).TRACKING_BOL!Fieldval)
+	   V.Local.sWayBillNo.Set(V.DataView.dtOpenShip!dvOpenShip(v.Args.Rowindex).WAY_BILL!Fieldval)
+	   V.Local.sCartonNum.Set(V.DataView.dtOpenShip!dvOpenShip(V.Args.Rowindex).CRTN_NO!FieldVal)
+	   f.Intrinsic.String.Build("UPDATE BOL_CARTON_NUM SET TRACKING_NO = '{0}' WHERE WAYBILL_NO = '{1}' AND CRTN_NO = '{2}'",v.Local.sTrackNO,V.Local.sWayBillNo,V.Local.sCartonNum,v.Local.sSql)
+'update BOL_CARTON_NUM  table           
+       f.ODBC.Connection!Con.Execute(V.Local.sSQL)      
+    f.Intrinsic.Control.EndIf
+'set this to the mainview to refresh display
+'gui.fProNum.GsGridProNum.MainView("gvProNum")
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fproNum_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.GsGridProNum_CellValueChanged.End
+
+Program.Sub.cmd1Refresh_Click.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	
+'close datatableS
+   f.Data.DataTable.Close("dtOpenShip1")
+   f.Data.DataTable.Close("dtPalletNum")
+   f.Data.DataTable.Close("dtWayBill")   
+   f.Data.DataTable.Close("dtOpenShip")	
+	
+   gui.fProNum.GsGridProNum.Visible(False)
+'clear grid
+   gui.fProNum.GsGridProNum.ClearRows("gvPronum")
+   F.Intrinsic.Control.If(V.Global.bLoadData,=,True)
+		F.Intrinsic.Control.CallSub(Serialize)
+	F.Intrinsic.Control.EndIf
+	
+   f.Intrinsic.Control.BlockEvents	
+   f.Intrinsic.Control.CallSub("InitializeGrid")	
+   f.Intrinsic.Control.UnBlockEvents
+   F.Intrinsic.Control.CallSub(Deserialize)
+   gui.fProNum.GsGridProNum.Visible(True)
+   
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fproNum_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.cmd1Refresh_Click.End
+
+Program.Sub.UnLoad.Start
+f.Intrinsic.Control.Try
+	v.Local.sError.Declare
+	F.Intrinsic.Control.If(V.Global.bLoadData)
+		F.Intrinsic.Control.CallSub(Serialize)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.If(V.ODBC.con.State,=,1)
+		F.ODBC.Connection!con.close
+	F.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+	Function.Intrinsic.String.Build("Subroutine Error {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End	
+F.Intrinsic.Control.EndTry
+Program.Sub.UnLoad.End
+
+Program.Sub.InitializeGrid.Start
+f.Intrinsic.Control.Try
+   v.Local.sError.Declare
+   V.Global.bLoadData.Set(True)
+'   f.Data.DataTable.CreateFromSQL("dtOpenShip","con","SELECT Convert(0,SQL_BIT) as SelectShip, A.CUSTOMER,A.Pro_No,A.TRACKING_NO,C.TRACKING_NO as TRACKING_BOL, A.PCK_NO,A.WAY_BILL,A.ORDER_NO,A.ORDER_SUFFIX,A.ORDER_REC,A.DATE_SHIPPED,A.CUSTOMER_PO,A.CARRIER_CD,B.PLLT_NO,C.CRTN_NO FROM V_SHIPMENT_Header A left join V_BOL_PALLET_NUM B on A.PCK_NO = B.PCK_NO LEFT JOIN V_BOL_CARTON_NUM C ON A.WAY_BILL = C.WAYBILL_NO",True) 
+   f.Data.DataTable.CreateFromSQL("dtOpenShip1","con","SELECT Convert(0,SQL_BIT) as SelectShip, A.CUSTOMER,A.Pro_No,A.TRACKING_NO, A.PCK_NO,A.WAY_BILL,A.ORDER_NO,A.ORDER_SUFFIX,A.ORDER_REC,A.DATE_SHIPPED,A.CUSTOMER_PO,A.CARRIER_CD FROM V_SHIPMENT_Header A ",True)
+   f.Data.DataTable.CreateFromSQL("dtPalletNum","con","SELECT B.PCK_NO,B.PLLT_NO FROM V_BOL_PALLET_NUM B",True)
+   f.Data.DataTable.CreateFromSQL("dtWayBill","con","SELECT C.WAYBILL_NO,C.TRACKING_NO as TRACKING_BOL,C.CRTN_NO FROM V_BOL_CARTON_NUM C",True)
+   f.Data.Linq.Join("LeftJoin","Datatable","dtOpenShip1*!*A","Datatable","dtPalletNum*!*B","A.PCK_NO=B.PCK_NO","Datatable","dtWayBill*!*C","A.Way_Bill=C.WayBill_NO","A.SELECTSHIP*!*A.CUSTOMER*!*A.PRO_NO*!*A.TRACKING_NO*!*A.PCK_NO*!*A.WAY_BILL*!*A.ORDER_NO*!*A.ORDER_SUFFIX*!*A.ORDER_REC*!*A.DATE_SHIPPED*!*A.CUSTOMER_PO*!*A.CARRIER_CD*!*B.PLLT_NO*!*C.TRACKING_BOL*!*C.CRTN_NO","","","","dtOpenShip",True)
+   
+   
+   f.Data.DataTable.AddColumn("dtOpenShip","CustName","String")
+   
+   f.Data.Dictionary.CreateFromSQL("ddCustName","con","Select CUSTOMER,NAME_CUSTOMER AS CUSTNAME from V_Customer_Master where REC = 1")
+   F.Data.Dictionary.SetDefaultReturn("ddCustName","")
+   f.Data.DataTable.FillFromDictionary("dtOpenShip","ddCustName","Customer","CUSTNAME")
+   F.Data.Dictionary.Close("ddCustName")
+ 
+'create a view of the rows
+   f.Data.DataView.Create("dtOpenShip","dvOpenShip",22)
+'create the grid
+   f.Intrinsic.Control.CallSub(CreateGrid)
+
+'set this to the mainview
+   gui.fProNum.GsGridProNum.MainView("gvProNum") 
+   
+F.Intrinsic.Control.Catch
+    F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+    F.Intrinsic.UI.Msgbox(V.Local.sError)
+    f.Intrinsic.Control.CallSub(fproNum_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.InitializeGrid.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$$}$12:00:00 AM$}$False
+${$5$}$2.0.0.0$}$2
+${$6$}$wnichols$}$20210804172842230$}$h3jCD/nJ6bE/cd0Fx7GbYZBAEscRS8LBO2yOYISFOEn+Ewh64wcKWt1n566FJZY0OlKxoTJz+OnPsZExNfw2vw==
+Program.Sub.Comments.End
